@@ -2,6 +2,7 @@
 
 #include "core/CommunicationBackend.hpp"
 #include "core/state.hpp"
+#include "util/analog_filters.hpp"
 
 #include <Adafruit_TinyUSB.h>
 #include <TUCompositeHID.hpp>
@@ -48,9 +49,13 @@
         HID_REPORT_SIZE    ( 8                                      ) ,\
         HID_REPORT_COUNT   ( 4                                      ) ,\
         HID_INPUT          ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ) ,\
-        /* Some output from the host idk */ \
+        /* Some random vendor input idk */ \
         HID_USAGE_PAGE_N   ( HID_USAGE_PAGE_VENDOR, 2               ) ,\
         HID_USAGE          ( 0x20                                   ) ,\
+        HID_REPORT_COUNT   ( 1                                      ) ,\
+        HID_INPUT          ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ) ,\
+        /* Some output from the host idk */ \
+        0x0A, 0x21, 0x26, \
         HID_REPORT_COUNT   ( 8                                      ) ,\
         HID_OUTPUT         ( HID_DATA | HID_VARIABLE | HID_ABSOLUTE ) ,\
     HID_COLLECTION_END
@@ -127,10 +132,10 @@ void NintendoSwitchBackend::SendReport() {
     _report.home = _outputs.home;
 
     // Analog outputs
-    _report.lx = (_outputs.leftStickX - 128) * 1.25 + 128;
-    _report.ly = 255 - ((_outputs.leftStickY - 128) * 1.25 + 128);
-    _report.rx = (_outputs.rightStickX - 128) * 1.25 + 128;
-    _report.ry = 255 - ((_outputs.rightStickY - 128) * 1.25 + 128);
+    _report.lx = apply_radius(apply_deadzone(_outputs.leftStickX, 15, true), 256);
+    _report.ly = 255 - apply_radius(apply_deadzone(_outputs.leftStickY, 15, true), 256);
+    _report.rx = apply_radius(apply_deadzone(_outputs.rightStickX, 15, true), 256);
+    _report.ry = 255 - apply_radius(apply_deadzone(_outputs.rightStickY, 15, true), 256);
 
     // D-pad Hat Switch
     _report.hat =
