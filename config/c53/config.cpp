@@ -1,22 +1,16 @@
-#include "comms/B0XXInputViewer.hpp"
-#include "comms/DInputBackend.hpp"
-#include "comms/GamecubeBackend.hpp"
-#include "comms/N64Backend.hpp"
-#include "comms/NintendoSwitchBackend.hpp"
-#include "comms/XInputBackend.hpp"
-#include "config/mode_selection.hpp"
+#include "comms/backend_init.hpp"
+#include "config_defaults.hpp"
 #include "core/CommunicationBackend.hpp"
-#include "core/InputMode.hpp"
 #include "core/KeyboardMode.hpp"
+#include "core/Persistence.hpp"
+#include "core/mode_selection.hpp"
 #include "core/pinout.hpp"
-#include "core/socd.hpp"
 #include "core/state.hpp"
 #include "input/SwitchMatrixInput.hpp"
-#include "joybus_utils.hpp"
-#include "modes/Melee20Button.hpp"
+#include "reboot.hpp"
 #include "stdlib.hpp"
 
-#include <pico/bootrom.h>
+Config config = default_config;
 
 CommunicationBackend **backends;
 size_t backend_count;
@@ -24,15 +18,15 @@ KeyboardMode *current_kb_mode = nullptr;
 
 const size_t num_rows = 5;
 const size_t num_cols = 13;
-uint row_pins[num_rows] = { 20, 19, 18, 17, 16 };
-uint col_pins[num_cols] = { 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
+const uint row_pins[num_rows] = { 20, 19, 18, 17, 16 };
+const uint col_pins[num_cols] = { 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
 // clang-format off
-SwitchMatrixElement matrix[num_rows][num_cols] = {
-    {NA,      NA,        NA,         NA,         NA, BTN(select), BTN(start), BTN(home), NA, BTN(r),      BTN(y),    BTN(lightshield), BTN(midshield)},
-    { BTN(l), BTN(left), BTN(down),  BTN(right), NA, NA,          NA,         NA,        NA, BTN(b),      BTN(x),    BTN(z),           BTN(up)       },
-    { NA,     NA,        NA,         NA,         NA, NA,          NA,         NA,        NA, NA,          NA,        NA,               NA            },
-    { NA,     NA,        NA,         NA,         NA, NA,          NA,         NA,        NA, BTN(c_left), BTN(c_up), BTN(c_right),     NA            },
-    { NA,     NA,        BTN(mod_x), BTN(mod_y), NA, NA,          NA,         NA,        NA, BTN(c_down), BTN(a),    NA,               NA            },
+const Button matrix[num_rows][num_cols] = {
+    {BTN_LF8,   BTN_LF7,  BTN_LF6,  BTN_LF5, NA, BTN_MB3,  BTN_MB1,  BTN_MB2,  NA, BTN_RF5, BTN_RF6,  BTN_RF7,  BTN_RF8 },
+    { BTN_LF4,  BTN_LF3,  BTN_LF2,  BTN_LF1, NA, BTN_MB4,  BTN_MB5,  BTN_MB6,  NA, BTN_RF1, BTN_RF2,  BTN_RF3,  BTN_RF4 },
+    { BTN_LF12, BTN_LF11, BTN_LF10, BTN_LF9, NA, BTN_MB7,  BTN_MB8,  BTN_MB9,  NA, BTN_RF9, BTN_RF10, BTN_RF11, BTN_RF12},
+    { NA,       BTN_LT5,  BTN_LT4,  BTN_LT3, NA, BTN_MB10, BTN_MB11, BTN_MB12, NA, BTN_RT3, BTN_RT4,  BTN_RT5,  NA      },
+    { NA,       NA,       BTN_LT1,  BTN_LT2, NA, BTN_LT6,  BTN_RT7,  BTN_RT6,  NA, BTN_RT2, BTN_RT1,  NA,       NA      },
 };
 // clang-format on
 DiodeDirection diode_direction = DiodeDirection::COL2ROW;
@@ -46,16 +40,16 @@ const Pinout pinout = {
 };
 
 void setup() {
-    // Create switch matrix input source and use it to read button states for checking button holds.
-    SwitchMatrixInput<num_rows, num_cols> *matrix_input =
-        new SwitchMatrixInput<num_rows, num_cols>(row_pins, col_pins, matrix, diode_direction);
+    static InputState inputs;
 
-    InputState button_holds;
-    matrix_input->UpdateInputs(button_holds);
+    // Create switch matrix input source and use it to read button states for checking button holds.
+    static SwitchMatrixInput<num_rows, num_cols>
+        matrix_input(row_pins, col_pins, matrix, diode_direction);
+    matrix_input.UpdateInputs(inputs);
 
     // Bootsel button hold as early as possible for safety.
-    if (button_holds.start) {
-        reset_usb_boot(0, 0);
+    if (inputs.mb1) {
+        reboot_bootloader();
     }
 
     // Turn on LED to indicate firmware booted.
@@ -63,63 +57,31 @@ void setup() {
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
     gpio_put(PICO_DEFAULT_LED_PIN, 1);
 
+    // Attempt to load config, or write default config to flash if failed to load config.
+    Persistence *persistence = new Persistence();
+    if (!persistence->LoadConfig(config)) {
+        persistence->SaveConfig(config);
+    }
+    delete persistence;
+
     // Create array of input sources to be used.
-    static InputSource *input_sources[] = { matrix_input };
+    static InputSource *input_sources[] = { &matrix_input };
     size_t input_source_count = sizeof(input_sources) / sizeof(InputSource *);
 
-    ConnectedConsole console = detect_console(pinout.joybus_data);
+    backend_count =
+        initialize_backends(backends, inputs, input_sources, input_source_count, config, pinout);
 
-    /* Select communication backend. */
-    CommunicationBackend *primary_backend;
-    if (console == ConnectedConsole::NONE) {
-        if (button_holds.x) {
-            // If no console detected and X is held on plugin then use Switch USB backend.
-            NintendoSwitchBackend::RegisterDescriptor();
-            backend_count = 1;
-            primary_backend = new NintendoSwitchBackend(input_sources, input_source_count);
-            backends = new CommunicationBackend *[backend_count] { primary_backend };
-
-            // Default to Ultimate mode on Switch.
-            primary_backend->SetGameMode(new Ultimate(socd::SOCD_2IP));
-            return;
-        } else if (button_holds.z) {
-            // If no console detected and Z is held on plugin then use DInput backend.
-            TUGamepad::registerDescriptor();
-            TUKeyboard::registerDescriptor();
-            backend_count = 2;
-            primary_backend = new DInputBackend(input_sources, input_source_count);
-            backends = new CommunicationBackend *[backend_count] {
-                primary_backend, new B0XXInputViewer(input_sources, input_source_count)
-            };
-        } else {
-            // Default to XInput mode if no console detected and no other mode forced.
-            backend_count = 2;
-            primary_backend = new XInputBackend(input_sources, input_source_count);
-            backends = new CommunicationBackend *[backend_count] {
-                primary_backend, new B0XXInputViewer(input_sources, input_source_count)
-            };
-        }
-    } else {
-        if (console == ConnectedConsole::GAMECUBE) {
-            primary_backend =
-                new GamecubeBackend(input_sources, input_source_count, pinout.joybus_data);
-        } else if (console == ConnectedConsole::N64) {
-            primary_backend = new N64Backend(input_sources, input_source_count, pinout.joybus_data);
-        }
-
-        // If console then only using 1 backend (no input viewer).
-        backend_count = 1;
-        backends = new CommunicationBackend *[backend_count] { primary_backend };
-    }
-
-    // Default to Melee mode.
-    primary_backend->SetGameMode(
-        new Melee20Button(socd::SOCD_2IP_NO_REAC, { .crouch_walk_os = false })
-    );
+    setup_mode_activation_bindings(config.game_mode_configs, config.game_mode_configs_count);
 }
 
 void loop() {
-    select_mode(backends[0]);
+    select_mode(
+        backends[0],
+        config.game_mode_configs,
+        config.game_mode_configs_count,
+        config.keyboard_modes,
+        config.keyboard_modes_count
+    );
 
     for (size_t i = 0; i < backend_count; i++) {
         backends[i]->SendReport();

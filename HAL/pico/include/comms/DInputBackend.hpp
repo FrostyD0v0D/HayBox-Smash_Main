@@ -9,12 +9,12 @@
 
 class DInputBackend : public CommunicationBackend {
   public:
-    DInputBackend(InputSource **input_sources, size_t input_source_count);
+    DInputBackend(InputState &inputs, InputSource **input_sources, size_t input_source_count);
     ~DInputBackend();
     void SendReport();
 
   private:
-    TUGamepad *_gamepad;
+    TUGamepad _gamepad;
 };
 
 #endif

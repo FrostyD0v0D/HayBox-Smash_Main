@@ -6,13 +6,14 @@
 #include <Nintendo.h>
 
 GamecubeBackend::GamecubeBackend(
+    InputState &inputs,
     InputSource **input_sources,
     size_t input_source_count,
     int polling_rate,
     int data_pin
 )
-    : CommunicationBackend(input_sources, input_source_count) {
-    _gamecube = new CGamecubeConsole(data_pin);
+    : CommunicationBackend(inputs, input_sources, input_source_count),
+      _gamecube(data_pin) {
     _data = defaultGamecubeData;
 
     if (polling_rate > 0) {
@@ -23,10 +24,6 @@ GamecubeBackend::GamecubeBackend(
         // If polling rate is set to 0, disable the delay.
         _delay = 0;
     }
-}
-
-GamecubeBackend::~GamecubeBackend() {
-    delete _gamecube;
 }
 
 void GamecubeBackend::SendReport() {
@@ -59,7 +56,7 @@ void GamecubeBackend::SendReport() {
     _data.report.right = _outputs.triggerRAnalog + 31;
 
     // Send outputs to console.
-    _gamecube->write(_data);
+    _gamecube.write(_data);
 
     delayMicroseconds(_delay);
 }
