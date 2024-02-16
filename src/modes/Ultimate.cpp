@@ -8,32 +8,52 @@
 Ultimate::Ultimate(socd::SocdType socd_type) {
     _socd_pair_count = 4;
     _socd_pairs = new socd::SocdPair[_socd_pair_count]{
-        socd::SocdPair{&InputState::left,    &InputState::right,   socd_type},
+        socd::SocdPair{ &InputState::left,   &InputState::right,   socd_type},
         socd::SocdPair{ &InputState::down,   &InputState::up,      socd_type},
         socd::SocdPair{ &InputState::c_left, &InputState::c_right, socd_type},
         socd::SocdPair{ &InputState::c_down, &InputState::c_up,    socd_type},
     };
 }
+////////////////////////////////////////////////////////////////////////
+//if(inputs.c_down){set_mode(backend, new Ultimate(socd::SOCD_NEUTRAL));           inputs.mod_x && inputs.start && c_down
+////////////////////////////////////////////////////////////////////////
 
 void Ultimate::UpdateDigitalOutputs(InputState &inputs, OutputState &outputs) {
-    outputs.a = inputs.a;
-    outputs.b = inputs.b;
-    outputs.x = inputs.x;
-    outputs.y = inputs.y;
-    outputs.buttonL = inputs.lightshield;
-    outputs.buttonR = inputs.z || inputs.midshield;
-    outputs.triggerLDigital = inputs.l;
-    outputs.triggerRDigital = inputs.r;
-    outputs.start = inputs.start;
-    outputs.select = inputs.select;
-    outputs.home = inputs.home;
+    outputs.a = inputs.c_down;                                  
+    outputs.b = inputs.b;                                       
+    outputs.x = inputs.x;                             
+    outputs.y = inputs.y;                                       
+    outputs.triggerLDigital = inputs.l;                         
+    outputs.triggerRDigital = inputs.r;                         
 
-    // Turn on D-Pad layer by holding Mod X + Mod Y or Nunchuk C button.
-    if ((inputs.mod_x && inputs.mod_y) || inputs.nunchuk_c) {
-        outputs.dpadUp = inputs.c_up;
-        outputs.dpadDown = inputs.c_down;
-        outputs.dpadLeft = inputs.c_left;
-        outputs.dpadRight = inputs.c_right;
+    // Turn on D-Pad layer by holding Nunchuk C button.
+    if (inputs.nunchuk_c) {
+        outputs.dpadUp = inputs.c_up;                           
+        outputs.dpadDown = inputs.c_down;                       
+        outputs.dpadLeft = inputs.c_left;                       
+        outputs.dpadRight = inputs.c_right;                     
+        outputs.leftStickClick = inputs.lightshield;                      
+        outputs.rightStickClick = inputs.z;
+        //changed from outputs.select = inputs.start; to nothing. Supposed to be on line 37
+        //changed from outputs.home = inputs.home; to nothing. Supposed to be line 38                           
+    }
+    else
+    {
+        outputs.buttonL = inputs.lightshield;                      
+        outputs.buttonR = inputs.z;                             
+        outputs.start = inputs.start;                           
+        outputs.select = inputs.select;                         
+        //outputs.home = inputs.home;                            
+    }
+    if (inputs.mod_x) {                                 /////////////      Testing to see if it works 
+        outputs.x = inputs.x||inputs.y;                  /////////////               
+    }                                                   /////////////       
+    else                                                /////////////      Should make it so that mod_x in the config.cpp file modifys x to
+    {                                                   /////////////      input both x and y at the same time crating a short hop
+        outputs.x = inputs.x;                            /////////////
+    }                                                   /////////////
+    if (inputs.y && inputs.nunchuk_c) {
+        outputs.home = inputs.home;
     }
 }
 
@@ -46,7 +66,7 @@ void Ultimate::UpdateAnalogOutputs(InputState &inputs, OutputState &outputs) {
         inputs.up,
         inputs.c_left,
         inputs.c_right,
-        inputs.c_down,
+        inputs.a,
         inputs.c_up,
         ANALOG_STICK_MIN,
         ANALOG_STICK_NEUTRAL,
@@ -90,7 +110,7 @@ void Ultimate::UpdateAnalogOutputs(InputState &inputs, OutputState &outputs) {
 
         // Angled fsmash/ftilt with C-Stick + MX
         if (directions.cx != 0) {
-            outputs.rightStickX = 128 + (directions.cx * 127);
+            outputs.rightStickX = 128 + (directions.cx * 72);
             outputs.rightStickY = 128 + (directions.y * 59);
         }
 
@@ -122,35 +142,35 @@ void Ultimate::UpdateAnalogOutputs(InputState &inputs, OutputState &outputs) {
 
             /* Extended Up B Angles */
             if (inputs.b) {
-                // (33.29) = 67 44
+                // 22.5 degrees
                 outputs.leftStickX = 128 + (directions.x * 67);
-                outputs.leftStickY = 128 + (directions.y * 44);
-                // (39.38) = 67 55
+                outputs.leftStickY = 128 + (directions.y * 28);
+                // 37.5 degrees
                 if (inputs.c_down) {
                     outputs.leftStickX = 128 + (directions.x * 67);
-                    outputs.leftStickY = 128 + (directions.y * 55);
+                    outputs.leftStickY = 128 + (directions.y * 51);
                 }
-                // (36.18) = 67 49
+                // 30 degrees
                 if (inputs.c_left) {
-                    outputs.leftStickX = 128 + (directions.x * 67);
-                    outputs.leftStickY = 128 + (directions.y * 49);
-                }
-                // (30.2) = 67 39
-                if (inputs.c_up) {
                     outputs.leftStickX = 128 + (directions.x * 67);
                     outputs.leftStickY = 128 + (directions.y * 39);
                 }
-                // (27.58) = 67 35
+                // 15 degrees
+                if (inputs.c_up) {
+                    outputs.leftStickX = 128 + (directions.x * 67);
+                    outputs.leftStickY = 128 + (directions.y * 18);
+                }
+                // 7.5 degrees
                 if (inputs.c_right) {
                     outputs.leftStickX = 128 + (directions.x * 67);
-                    outputs.leftStickY = 128 + (directions.y * 35);
+                    outputs.leftStickY = 128 + (directions.y * 9);
                 }
             }
 
             // Angled Ftilts
             if (inputs.a) {
                 outputs.leftStickX = 128 + (directions.x * 36);
-                outputs.leftStickY = 128 + (directions.y * 26);
+                outputs.leftStickY = 128 + (directions.y * 30);
             }
         }
     }
@@ -216,27 +236,27 @@ void Ultimate::UpdateAnalogOutputs(InputState &inputs, OutputState &outputs) {
 
             /* Extended Up B Angles */
             if (inputs.b) {
-                // (56.71) = 44 67
-                outputs.leftStickX = 128 + (directions.x * 44);
+                // 67.5 degrees
+                outputs.leftStickX = 128 + (directions.x * 28);
                 outputs.leftStickY = 128 + (directions.y * 67);
-                // (50.62) = 55 67
+                // 52.5 degrees
                 if (inputs.c_down) {
-                    outputs.leftStickX = 128 + (directions.x * 55);
+                    outputs.leftStickX = 128 + (directions.x * 51);
                     outputs.leftStickY = 128 + (directions.y * 67);
                 }
-                // (53.82) = 49 67
+                // 60 degrees
                 if (inputs.c_left) {
-                    outputs.leftStickX = 128 + (directions.x * 49);
-                    outputs.leftStickY = 128 + (directions.y * 67);
-                }
-                // (59.8) = 39 67
-                if (inputs.c_up) {
                     outputs.leftStickX = 128 + (directions.x * 39);
                     outputs.leftStickY = 128 + (directions.y * 67);
                 }
-                // (62.42) = 35 67
+                // 75 degrees
+                if (inputs.c_up) {
+                    outputs.leftStickX = 128 + (directions.x * 18);
+                    outputs.leftStickY = 128 + (directions.y * 67);
+                }
+                // 82.5 degrees
                 if (inputs.c_right) {
-                    outputs.leftStickX = 128 + (directions.x * 35);
+                    outputs.leftStickX = 128 + (directions.x * 9);
                     outputs.leftStickY = 128 + (directions.y * 67);
                 }
             }
@@ -266,7 +286,7 @@ void Ultimate::UpdateAnalogOutputs(InputState &inputs, OutputState &outputs) {
     }
 
     // Shut off C-stick when using D-Pad layer.
-    if ((inputs.mod_x && inputs.mod_y) || inputs.nunchuk_c) {
+    if (inputs.nunchuk_c) {
         outputs.rightStickX = 128;
         outputs.rightStickY = 128;
     }
